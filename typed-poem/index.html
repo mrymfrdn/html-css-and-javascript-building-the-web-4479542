@@ -64,6 +64,9 @@ document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
    "lines": [text, indent as % of width, blank lines before]
    "finalLine": optional — a big centered line that appears automatically
                 after the page's lines finish, no click needed for it.
+   "audio":     optional — a sound file (in the same folder as this page) that
+                starts when the page starts and keeps playing through the
+                pages after it until the file ends.
 ============================================================ */
 var PAGES = [
   {
@@ -84,6 +87,7 @@ var PAGES = [
     lines: [
       ["the sound of a Skype call still haunts you", 0, 0]
     ],
+    audio: "skype-call.mp3",
     finalLine: "Now you can look back at the files"
   },
   {
@@ -124,6 +128,14 @@ var PAGES = [
 var poemBox = document.getElementById('poem');
 var finalBox = document.getElementById('final');
 var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+var sounds = {};     // one <audio> per file, created up front
+PAGES.forEach(function (p) {
+  if (p.audio && !sounds[p.audio]) {
+    sounds[p.audio] = new Audio(p.audio);
+    sounds[p.audio].preload = 'auto';
+  }
+});
 
 var token = 0;       // bumps on every click so in-flight typing stops cleanly
 var pageIndex = 0;
@@ -180,6 +192,14 @@ async function playPage(idx, my) {
   var page = PAGES[idx];
   var lines = buildLines(page.lines, poemBox);
 
+  if (page.audio) {
+    var s = sounds[page.audio];
+    s.wanted = true;
+    s.currentTime = 0;
+    s.muted = false;
+    s.play().catch(function () {}); // ignore if the browser blocks it
+  }
+
   for (var i = 0; i < lines.length; i++) {
     await typeLine(lines[i], LINE_PAUSE + (page.lines[i][2] ? STANZA_PAUSE : 0), my);
     if (cancelled(my)) return;
@@ -197,7 +217,25 @@ async function playPage(idx, my) {
   }
 }
 
+// Phones (especially iPhone) only allow sound if play() is first called
+// directly inside a tap, so "unlock" every sound on the first click.
+var unlocked = false;
+function unlockSounds() {
+  if (unlocked) return;
+  unlocked = true;
+  Object.keys(sounds).forEach(function (k) {
+    var s = sounds[k];
+    s.muted = true;
+    s.play().then(function () {
+      if (s.wanted) return; // the real playback already started — leave it
+      s.pause(); s.currentTime = 0; s.muted = false;
+    })
+            .catch(function () { s.muted = false; });
+  });
+}
+
 async function goToNextPage() {
+  unlockSounds();
   token++;
   var my = token;
 
