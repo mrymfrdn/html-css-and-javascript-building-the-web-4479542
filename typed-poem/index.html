@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Typed poem</title>
+<style>
+:root {
+  --bg: #000000;
+  --ink: #ffffff;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+html { background: var(--bg); }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); overflow: hidden; font-family: Helvetica, Arial, sans-serif; }
+
+#poem {
+  position: fixed; left: 6vw; top: 6vh; width: 88vw;
+  transition: opacity var(--fade-ms, 1500ms) ease;
+}
+#final {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  box-sizing: border-box; padding: 0 6vw;
+  transition: opacity var(--fade-ms, 1500ms) ease;
+}
+#poem.out, #final.out { opacity: 0; }
+
+.line { display: block; width: fit-content; min-height: 1.2em;
+  font-size: clamp(16px, min(3.6vw, 5.6vh), 50px); line-height: 1.2; white-space: normal; }
+.final-line { font-weight: 700; text-align: center; max-width: 100%; }
+.rest { visibility: hidden; }
+
+.typing .done::after {
+  content: ""; display: inline-block; width: 0.06em; height: 1em;
+  margin-left: 0.05em; vertical-align: -0.12em; background: var(--ink);
+  animation: blink 0.9s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .typing .done::after { animation: none; } }
+</style>
+</head>
+<body>
+<div id="poem"></div>
+<div id="final"></div>
+
+<script>
+/* ============================================================
+   TIMING — change these to taste (all in milliseconds)
+============================================================ */
+var CHAR_SPEED    = 55;    // time per typed character
+var LINE_PAUSE    = 650;   // pause between lines
+var STANZA_PAUSE  = 800;   // extra pause before a line marked with a blank-line gap
+var FINAL_DELAY   = 5000;  // how long the final line waits before it starts typing
+var FADE_MS       = 1500;  // fade-to-black duration (also set as --fade-ms below)
+var BLACK_PAUSE   = 700;   // how long the screen holds on plain black before the next page
+
+document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
+
+/* ============================================================
+   CONTENT — each page is its own screen, shown one click at a time.
+   "lines": [text, indent as % of width, blank lines before]
+   "finalLine": optional — a big centered line that appears automatically
+                after the page's lines finish, no click needed for it.
+============================================================ */
+var PAGES = [
+  {
+    lines: [
+      ["back then you didn’t know", 0, 0],
+      ["what you were going through", 41, 0],
+      ["was conversion therapy.", 41, 0],
+      ["You needed help", 0, 2],
+      ["something was wrong", 24, 0],
+      ["so you believed", 0, 1],
+      ["that something was wrong", 23, 0],
+      ["that was you", 32, 0],
+      ["and needed to be fixed.", 59, 0],
+      ["changed.", 59, 0]
+    ]
+  },
+  {
+    lines: [
+      ["the sound of a Skype call still haunts you", 0, 0]
+    ],
+    finalLine: "Now you can look back at the files"
+  },
+  {
+    lines: [
+      ["the images", 32, 0],
+      ["the audios…", 43, 0],
+      ["you recorded the sessions subconsciously,", 3, 0],
+      ["feeling something needs to be kept", 0, 0],
+      ["now all of them are evidences", 0, 2],
+      ["That I stored for you in my memory…", 0, 0],
+      ["Like snapshots from a session,", 0, 1]
+    ]
+  },
+  {
+    lines: [
+      ["the trying", 32, 0],
+      ["the failing", 43, 0],
+      ["you recorded the sessions subconsciously,", 3, 0],
+      ["feeling something needs to be kept", 0, 0],
+      ["now all of them are evidences", 0, 2],
+      ["That I stored for you in my memory…", 0, 0],
+      ["Like snapshots from a session,", 0, 1]
+    ]
+  }
+  // To add another page, copy the block above (including its comma) and paste
+  // another one here, right before this closing bracket, e.g.:
+  // ,{
+  //   lines: [
+  //     ["your next poem's first line", 0, 0],
+  //     ["second line", 20, 0]
+  //   ]
+  // }
+];
+
+/* ============================================================
+   ENGINE — shouldn't need to touch below this line
+============================================================ */
+var poemBox = document.getElementById('poem');
+var finalBox = document.getElementById('final');
+var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+var token = 0;       // bumps on every click so in-flight typing stops cleanly
+var pageIndex = 0;
+
+function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+function cancelled(my) { return my !== token; }
+
+function makeLine(text, parent, extraClass) {
+  var line = document.createElement('span');
+  line.className = 'line' + (extraClass ? ' ' + extraClass : '');
+  var done = document.createElement('span');
+  done.className = 'done';
+  var rest = document.createElement('span');
+  rest.className = 'rest';
+  rest.textContent = text;
+  line.appendChild(done);
+  line.appendChild(rest);
+  parent.appendChild(line);
+  return { el: line, done: done, rest: rest, text: text };
+}
+
+function buildLines(rows, box) {
+  return rows.map(function (row) {
+    var l = makeLine(row[0], box);
+    l.el.style.marginLeft = row[1] + '%';
+    l.el.style.maxWidth = (100 - row[1]) + '%';
+    l.el.style.marginTop = (row[2] * 1.2) + 'em';
+    return l;
+  });
+}
+
+async function typeLine(l, pause, my) {
+  if (reduce) { l.done.textContent = l.text; l.rest.textContent = ''; return; }
+  await wait(pause);
+  if (cancelled(my)) return;
+  l.el.classList.add('typing');
+  for (var c = 1; c <= l.text.length; c++) {
+    if (cancelled(my)) return;
+    l.done.textContent = l.text.slice(0, c);
+    l.rest.textContent = l.text.slice(c);
+    await wait(CHAR_SPEED * (0.6 + Math.random() * 0.8));
+  }
+}
+
+function resetBoxes() {
+  poemBox.classList.remove('out');
+  finalBox.classList.remove('out');
+  poemBox.textContent = '';
+  finalBox.textContent = '';
+}
+
+async function playPage(idx, my) {
+  resetBoxes();
+  var page = PAGES[idx];
+  var lines = buildLines(page.lines, poemBox);
+
+  for (var i = 0; i < lines.length; i++) {
+    await typeLine(lines[i], LINE_PAUSE + (page.lines[i][2] ? STANZA_PAUSE : 0), my);
+    if (cancelled(my)) return;
+    lines[i].el.classList.remove('typing');
+  }
+
+  if (page.finalLine) {
+    await wait(FINAL_DELAY);
+    if (cancelled(my)) return;
+    poemBox.classList.add('out');
+    await wait(FADE_MS + 400);
+    if (cancelled(my)) return;
+    var fl = makeLine(page.finalLine, finalBox, 'final-line');
+    await typeLine(fl, 0, my); // keeps its blinking cursor at the end
+  }
+}
+
+async function goToNextPage() {
+  token++;
+  var my = token;
+
+  // fade out whatever is currently showing
+  poemBox.classList.add('out');
+  finalBox.classList.add('out');
+  await wait(FADE_MS);
+  if (cancelled(my)) return;
+
+  // hold on plain black for a beat
+  await wait(BLACK_PAUSE);
+  if (cancelled(my)) return;
+
+  pageIndex++;
+  if (pageIndex >= PAGES.length) return; // stays on black after the last page
+
+  playPage(pageIndex, my);
+}
+
+document.addEventListener('click', goToNextPage);
+
+playPage(pageIndex, token);
+</script>
+</body>
+</html>
