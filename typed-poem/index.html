@@ -70,7 +70,7 @@ var START_TEXT    = "";
 /* ============================================================
    DRIFT PAGES — only used by pages that have  drift: true
 ============================================================ */
-var DRIFT_X        = 3;     // how far each line wanders sideways (% of screen width)
+var DRIFT_X        = 0;     // how far each line wanders sideways (% of screen width)
 var DRIFT_Y        = 2;     // how far each line wanders up/down (% of screen height)
 var DRIFT_MIN_S    = 7;     // slowest/fastest a single move takes, in seconds
 var DRIFT_MAX_S    = 12;
@@ -82,12 +82,15 @@ var FADE_HOLD      = 5000;  // how long a word stays faded before coming back
 
 /* ============================================================
    PILE PAGES — only used by pages that have  pile: true
+   The first PILE_STAY lines are typed and stay. Then every PILE_BATCH
+   lines are typed underneath and slowly rise, covering whatever is
+   still readable above them.
 ============================================================ */
+var PILE_STAY      = 3;     // lines typed first that just stay
+var PILE_BATCH     = 5;     // how many lines rise together each time
+var PILE_WAIT      = 2000;  // pause after a batch is typed, before it rises
+var PILE_RISE_S    = 8;     // seconds a batch takes to rise (bigger = slower)
 var PILE_BOTTOM    = 8;     // keep this much empty at the bottom (% of screen height)
-var PILE_MOVE_S    = 1.5;   // seconds the lines take to slide up for each new line
-var PILE_AT_END    = true;  // after the last line, slowly pile EVERY line up at the top
-var PILE_END_DELAY = 8000;  // wait this long after the last line before that starts
-var PILE_END_S     = 20;    // how many seconds that final pile-up takes
 
 document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
 
@@ -102,9 +105,8 @@ document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
    "drift":     optional — true makes the lines wander slowly around the
                 page; words wrapped in *stars* slowly turn bold, and a few
                 random words fade a little and come back.
-   "pile":      optional — true makes the lines slide up as new lines are
-                typed at the bottom; lines that reach the top stop there and
-                pile up on top of each other.
+   "pile":      optional — true makes groups of lines rise slowly from the
+                bottom and cover the lines above them (see PILE PAGES).
 ============================================================ */
 var PAGES = [
   {
@@ -229,27 +231,52 @@ function splitIntoWords(l) {
   return words;
 }
 
-var pileSeconds = PILE_MOVE_S;
-
-function setTransition(el, driftSecs) {
+function setTransition(el, driftSecs, riseSecs) {
   if (driftSecs) el.driftSecs = driftSecs;
-  el.style.transition = 'translate ' + pileSeconds + 's ease' +
+  if (riseSecs) el.riseSecs = riseSecs;
+  el.style.transition = 'translate ' + (el.riseSecs || 0) + 's ease-in-out' +
     (el.driftSecs ? ', transform ' + el.driftSecs + 's ease-in-out' : '');
 }
 
-// Slide lines 0..last up so line "last" ends above the bottom margin.
-// A line never goes above the top: once it gets there it stays, so
-// older lines pile up on top of each other.
-function pileUp(lines, last, all) {
-  var top = poemBox.getBoundingClientRect().top;
-  var bottom = window.innerHeight * (1 - PILE_BOTTOM / 100) - top;
-  var end = lines[last].el.offsetTop + lines[last].el.offsetHeight;
-  var shift = all ? Infinity : Math.max(0, end - bottom);
-  for (var i = 0; i <= last; i++) {
-    var el = lines[i].el;
-    setTransition(el);
-    el.style.translate = '0 ' + (-Math.min(shift, el.offsetTop)) + 'px';
+// Put line l at height y (px from the top of the poem area).
+// Nothing goes above the top: lines that would, stop there and pile up.
+function placeLine(l, y, secs) {
+  setTransition(l.el, 0, secs);
+  l.el.style.translate = '0 ' + (Math.max(0, y) - l.el.offsetTop) + 'px';
+}
+
+// Positions are kept in "page" pixels (l.y); "lift" scrolls the whole
+// page up when a new batch wouldn't fit on screen.
+function makePiler(lines) {
+  var placed = [], lift = 0, readableTop = 0, bottom = 0;
+  function screenBottom() {
+    return window.innerHeight * (1 - PILE_BOTTOM / 100) - poemBox.getBoundingClientRect().top;
   }
+  function show(group, secs) {
+    group.forEach(function (l) { placeLine(l, l.y - lift, secs); });
+  }
+  return {
+    // put a group just under everything so far (where it gets typed)
+    below: function (group) {
+      var first = group[0].el.offsetTop, last = group[group.length - 1].el;
+      var height = last.offsetTop + last.offsetHeight - first;
+      if (!placed.length) { readableTop = first; bottom = first; }
+      group.forEach(function (l) { l.rel = l.el.offsetTop - first; l.y = bottom + l.rel; });
+      var over = bottom + height - lift - screenBottom();
+      if (over > 0) { lift += over; show(placed, PILE_RISE_S); }
+      show(group, 0);
+      placed = placed.concat(group);
+      return height;
+    },
+    // slowly raise a group so its top meets the first still-readable line
+    rise: function (group, height) {
+      group.forEach(function (l) { l.y = readableTop + l.rel; });
+      show(group, PILE_RISE_S);
+      var newBottom = readableTop + height;
+      if (newBottom > bottom) { readableTop = bottom; bottom = newBottom; }
+    },
+    done: function (group, height) { bottom += height; }
+  };
 }
 
 async function driftLine(el, my) {
@@ -309,12 +336,33 @@ async function playPage(idx, my) {
     lines.forEach(function (l) { driftLine(l.el, my); });
   }
 
-  pileSeconds = PILE_MOVE_S;
-  for (var i = 0; i < lines.length; i++) {
-    if (page.pile) pileUp(lines, i);
-    await typeLine(lines[i], LINE_PAUSE + (page.lines[i][2] ? STANZA_PAUSE : 0), my);
-    if (cancelled(my)) return;
-    lines[i].el.classList.remove('typing');
+  var groups = [lines];
+  if (page.pile) {
+    groups = [lines.slice(0, PILE_STAY)];
+    for (var g = PILE_STAY; g < lines.length; g += PILE_BATCH) {
+      groups.push(lines.slice(g, g + PILE_BATCH));
+    }
+  }
+  var piler = page.pile && makePiler(lines);
+
+  var n = 0;
+  for (var gi = 0; gi < groups.length; gi++) {
+    var group = groups[gi];
+    if (!group.length) continue;
+    var height = piler && piler.below(group);
+    for (var j = 0; j < group.length; j++, n++) {
+      await typeLine(group[j], LINE_PAUSE + (page.lines[n][2] ? STANZA_PAUSE : 0), my);
+      if (cancelled(my)) return;
+      group[j].el.classList.remove('typing');
+    }
+    if (piler && gi === 0) piler.done(group, height);
+    if (piler && gi > 0) {
+      await wait(PILE_WAIT);
+      if (cancelled(my)) return;
+      piler.rise(group, height);
+      await wait(PILE_RISE_S * 1000);
+      if (cancelled(my)) return;
+    }
   }
 
   if (page.drift) {
@@ -322,13 +370,6 @@ async function playPage(idx, my) {
     lines.forEach(function (l) { words = words.concat(splitIntoWords(l)); });
     boldMarked(words, my);
     if (!reduce) fadeRandomWords(words, my);
-  }
-
-  if (page.pile && PILE_AT_END) {
-    await wait(PILE_END_DELAY);
-    if (cancelled(my)) return;
-    pileSeconds = PILE_END_S;
-    pileUp(lines, lines.length - 1, true);
   }
 
   if (page.finalLine) {
