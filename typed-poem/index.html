@@ -35,7 +35,6 @@ body { background: var(--bg); color: var(--ink); overflow: hidden; font-family: 
 .rest { visibility: hidden; }
 
 /* drifting pages: each line wanders slowly, words thicken or fade */
-.line.drift { transition-property: transform; transition-timing-function: ease-in-out; }
 .word { transition: opacity 3s ease, -webkit-text-stroke-width 3s ease;
   -webkit-text-stroke: 0 currentColor; }
 .word.bolded { -webkit-text-stroke-width: 0.035em; }
@@ -81,6 +80,15 @@ var FADE_EVERY_MIN = 3000;  // random gap between one word fading and the next
 var FADE_EVERY_MAX = 7000;
 var FADE_HOLD      = 5000;  // how long a word stays faded before coming back
 
+/* ============================================================
+   PILE PAGES — only used by pages that have  pile: true
+============================================================ */
+var PILE_BOTTOM    = 8;     // keep this much empty at the bottom (% of screen height)
+var PILE_MOVE_S    = 1.5;   // seconds the lines take to slide up for each new line
+var PILE_AT_END    = true;  // after the last line, slowly pile EVERY line up at the top
+var PILE_END_DELAY = 8000;  // wait this long after the last line before that starts
+var PILE_END_S     = 20;    // how many seconds that final pile-up takes
+
 document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
 
 /* ============================================================
@@ -94,6 +102,9 @@ document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
    "drift":     optional — true makes the lines wander slowly around the
                 page; words wrapped in *stars* slowly turn bold, and a few
                 random words fade a little and come back.
+   "pile":      optional — true makes the lines slide up as new lines are
+                typed at the bottom; lines that reach the top stop there and
+                pile up on top of each other.
 ============================================================ */
 var PAGES = [
   {
@@ -116,6 +127,7 @@ var PAGES = [
   },
   {
     drift: true,
+    pile: true,
     lines: [
       ["You are left alone in the silence of the house. You take a cold shower, to calm down after the session. He told you to.", 12, 0],
       ["You still hear his voice in your head. You don't want to. you can't stop it. ", 43, 0],
@@ -217,11 +229,33 @@ function splitIntoWords(l) {
   return words;
 }
 
+var pileSeconds = PILE_MOVE_S;
+
+function setTransition(el, driftSecs) {
+  if (driftSecs) el.driftSecs = driftSecs;
+  el.style.transition = 'translate ' + pileSeconds + 's ease' +
+    (el.driftSecs ? ', transform ' + el.driftSecs + 's ease-in-out' : '');
+}
+
+// Slide lines 0..last up so line "last" ends above the bottom margin.
+// A line never goes above the top: once it gets there it stays, so
+// older lines pile up on top of each other.
+function pileUp(lines, last, all) {
+  var top = poemBox.getBoundingClientRect().top;
+  var bottom = window.innerHeight * (1 - PILE_BOTTOM / 100) - top;
+  var end = lines[last].el.offsetTop + lines[last].el.offsetHeight;
+  var shift = all ? Infinity : Math.max(0, end - bottom);
+  for (var i = 0; i <= last; i++) {
+    var el = lines[i].el;
+    setTransition(el);
+    el.style.translate = '0 ' + (-Math.min(shift, el.offsetTop)) + 'px';
+  }
+}
+
 async function driftLine(el, my) {
-  el.classList.add('drift');
   while (!cancelled(my)) {
     var secs = rand(DRIFT_MIN_S, DRIFT_MAX_S);
-    el.style.transitionDuration = secs + 's';
+    setTransition(el, secs);
     el.style.transform = 'translate(' + rand(-DRIFT_X, DRIFT_X) + 'vw,' +
                                          rand(-DRIFT_Y, DRIFT_Y) + 'vh)';
     await wait(secs * 1000);
@@ -275,7 +309,9 @@ async function playPage(idx, my) {
     lines.forEach(function (l) { driftLine(l.el, my); });
   }
 
+  pileSeconds = PILE_MOVE_S;
   for (var i = 0; i < lines.length; i++) {
+    if (page.pile) pileUp(lines, i);
     await typeLine(lines[i], LINE_PAUSE + (page.lines[i][2] ? STANZA_PAUSE : 0), my);
     if (cancelled(my)) return;
     lines[i].el.classList.remove('typing');
@@ -286,6 +322,13 @@ async function playPage(idx, my) {
     lines.forEach(function (l) { words = words.concat(splitIntoWords(l)); });
     boldMarked(words, my);
     if (!reduce) fadeRandomWords(words, my);
+  }
+
+  if (page.pile && PILE_AT_END) {
+    await wait(PILE_END_DELAY);
+    if (cancelled(my)) return;
+    pileSeconds = PILE_END_S;
+    pileUp(lines, lines.length - 1, true);
   }
 
   if (page.finalLine) {
