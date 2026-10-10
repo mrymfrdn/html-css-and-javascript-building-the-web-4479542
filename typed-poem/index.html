@@ -25,8 +25,15 @@ body { background: var(--bg); color: var(--ink); overflow: hidden; font-family: 
   display: flex; align-items: center; justify-content: center;
   box-sizing: border-box; padding: 0 6vw;
   transition: opacity var(--fade-ms, 1500ms) ease;
+  pointer-events: none; /* lets scrolling reach the poem underneath */
 }
 #poem.out, #final.out { opacity: 0; }
+
+/* scrollable pages: the poem area fills the screen and scrolls, no scrollbar shown */
+#poem.scrollable { bottom: 0; overflow-y: auto; overflow-x: hidden;
+  padding-bottom: 12vh; box-sizing: border-box;
+  scrollbar-width: none; overscroll-behavior: contain; }
+#poem.scrollable::-webkit-scrollbar { display: none; }
 
 .line { display: block; width: fit-content; min-height: 1.2em;
   font-size: clamp(16px, min(3.6vw, 5.6vh), 50px); line-height: 1.2; white-space: normal; }
@@ -66,6 +73,14 @@ var BLACK_PAUSE   = 700;   // how long the screen holds on plain black before th
 // Browsers only allow sound after the viewer clicks/taps, so the poem waits
 // for one tap first. Set to "" for a plain black start screen.
 var START_TEXT    = "";
+
+// Lets the viewer scroll the text (mouse wheel, trackpad, or swiping on a
+// phone) when a page is longer than the screen. While the text is typing,
+// the page follows the newest line unless the viewer has just scrolled.
+// A single page can override this with  scroll: true  or  scroll: false.
+// Pages with  pile: true  don't scroll unless they say  scroll: true.
+var ALLOW_SCROLL  = true;
+var FOLLOW_PAUSE  = 4000;  // after the viewer scrolls, stop following the typing for this long
 
 /* ============================================================
    DRIFT PAGES — only used by pages that have  drift: true
@@ -107,6 +122,8 @@ document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
                 random words fade a little and come back.
    "pile":      optional — true makes groups of lines rise slowly from the
                 bottom and cover the lines above them (see PILE PAGES).
+   "scroll":    optional — true/false to allow scrolling on just this page
+                (otherwise ALLOW_SCROLL decides).
 ============================================================ */
 var PAGES = [
   {
@@ -317,11 +334,28 @@ function resetBoxes() {
   finalBox.classList.remove('out');
   poemBox.textContent = '';
   finalBox.textContent = '';
+  poemBox.scrollTop = 0;
+}
+
+// remember when the viewer last scrolled, so the typing doesn't yank them back
+var lastUserScroll = 0;
+['wheel', 'touchmove', 'keydown'].forEach(function (ev) {
+  poemBox.addEventListener(ev, function () { lastUserScroll = Date.now(); }, { passive: true });
+});
+
+// on scrollable pages, bring the line about to be typed into view
+function follow(l) {
+  if (!poemBox.classList.contains('scrollable')) return;
+  if (Date.now() - lastUserScroll < FOLLOW_PAUSE) return;
+  var below = l.el.offsetTop + l.el.offsetHeight - (poemBox.scrollTop + poemBox.clientHeight * 0.85);
+  if (below > 0) poemBox.scrollTo({ top: poemBox.scrollTop + below, behavior: reduce ? 'auto' : 'smooth' });
 }
 
 async function playPage(idx, my) {
   resetBoxes();
   var page = PAGES[idx];
+  var canScroll = page.scroll !== undefined ? page.scroll : (ALLOW_SCROLL && !page.pile);
+  poemBox.classList.toggle('scrollable', !!canScroll);
   var lines = buildLines(page.lines, poemBox);
 
   if (page.audio) {
@@ -351,6 +385,7 @@ async function playPage(idx, my) {
     if (!group.length) continue;
     var height = piler && piler.below(group);
     for (var j = 0; j < group.length; j++, n++) {
+      follow(group[j]);
       await typeLine(group[j], LINE_PAUSE + (page.lines[n][2] ? STANZA_PAUSE : 0), my);
       if (cancelled(my)) return;
       group[j].el.classList.remove('typing');
