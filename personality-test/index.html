@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Personality Test</title>
+		<link rel="stylesheet" href="./style.css" />
+	</head>
+
+	<body>
+		<header class="site-header">
+			<span class="logo">Know<strong>Thyself</strong></span>
+			<span class="header-note">Free Personality Assessment</span>
+		</header>
+
+		<main class="card">
+			<div class="progress-info">
+				<span>Question 87 of 87</span>
+				<span>100% complete</span>
+			</div>
+			<div class="progress-bar" role="progressbar" aria-valuenow="87" aria-valuemin="1" aria-valuemax="87">
+				<div class="progress-fill"></div>
+			</div>
+
+			<form id="question-form">
+				<fieldset>
+					<legend>
+						<span class="question-number">Question 87</span>
+						What is your average daily screen time?
+					</legend>
+
+					<label class="option">
+						<input type="radio" name="screen-time" value="under-1" />
+						<span>Under an hour</span>
+					</label>
+					<label class="option">
+						<input type="radio" name="screen-time" value="1-4" />
+						<span>1–4 hours</span>
+					</label>
+					<label class="option">
+						<input type="radio" name="screen-time" value="4-8" />
+						<span>4–8 hours</span>
+					</label>
+					<label class="option">
+						<input type="radio" name="screen-time" value="8-12" />
+						<span>8–12 hours</span>
+					</label>
+					<label class="option">
+						<input type="radio" name="screen-time" value="12-plus" />
+						<span>12+ hours</span>
+					</label>
+					<label class="option">
+						<input type="radio" name="screen-time" value="24" />
+						<span>24 hours</span>
+					</label>
+				</fieldset>
+
+				<div class="actions">
+					<button type="button" class="btn btn-secondary" disabled>Back</button>
+					<button type="submit" id="submit" class="btn btn-primary" disabled>Submit</button>
+				</div>
+			</form>
+		</main>
+
+		<div id="result-overlay" class="overlay" hidden>
+			<div class="modal" role="dialog" aria-modal="true" aria-labelledby="result-title">
+				<button type="button" id="close-modal" class="close" aria-label="Close">&times;</button>
+				<p class="modal-label">Your Results</p>
+				<h2 id="result-title">AHDD</h2>
+				<p class="result-text">
+					Your results indicate that you suffer from
+					<strong>&ldquo;AHDD&rdquo;</strong> &mdash;
+					<em>Adversarial Hyper Digital Dependency</em>.
+				</p>
+				<button type="button" id="retake" class="btn btn-primary">Retake Test</button>
+			</div>
+		</div>
+
+		<script src="./script.js"></script>
+	</body>
+</html>
