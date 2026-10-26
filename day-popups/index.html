@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>80 Days</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #222;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+
+    #photo {
+      max-width: 80vw;
+      max-height: 80vh;
+      cursor: pointer;
+      border-radius: 8px;
+    }
+
+    .popup {
+      position: fixed;
+      padding: 12px 20px;
+      background: white;
+      border: 2px solid #333;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      font-size: 18px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <!-- Put your photo next to this file and name it photo.jpg -->
+  <img id="photo" src="photo.jpg" alt="Click me">
+
+  <script>
+    const photo = document.getElementById("photo");
+    const lastDay = 80;
+    let started = false;
+
+    function showPopup(day) {
+      const popup = document.createElement("div");
+      popup.className = "popup";
+      popup.textContent = "Day " + day;
+
+      // place each popup at a random spot on the screen
+      popup.style.left = Math.random() * (window.innerWidth - 120) + "px";
+      popup.style.top = Math.random() * (window.innerHeight - 60) + "px";
+
+      document.body.appendChild(popup);
+    }
+
+    photo.addEventListener("click", function () {
+      if (started) return;
+      started = true;
+
+      let day = 1;
+      showPopup(day);
+
+      const timer = setInterval(function () {
+        day++;
+        showPopup(day);
+        if (day === lastDay) clearInterval(timer);
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
