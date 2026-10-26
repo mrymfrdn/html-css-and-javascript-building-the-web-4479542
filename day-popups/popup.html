@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Day</title>
+  <link rel="stylesheet" href="retro.css">
+  <style>
+    body {
+      margin: 0;
+      background: #c0c0c0;
+    }
+
+    .window {
+      height: 100vh;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .window-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .message {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #0000c0;
+      color: #fff;
+      font: bold 22px/32px "Times New Roman", serif;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="window">
+    <div class="title-bar">
+      <span id="title">Day</span>
+      <span class="title-buttons"><b onclick="window.close()">×</b></span>
+    </div>
+    <div class="window-body">
+      <div class="message">
+        <div class="icon">i</div>
+        <span id="text">Day</span>
+      </div>
+      <button onclick="window.close()">OK</button>
+    </div>
+  </div>
+
+  <script>
+    const day = new URLSearchParams(location.search).get("day") || "?";
+    document.title = "Day " + day;
+    document.getElementById("title").textContent = "Day " + day;
+    document.getElementById("text").textContent = "Day " + day;
+  </script>
+</body>
+</html>

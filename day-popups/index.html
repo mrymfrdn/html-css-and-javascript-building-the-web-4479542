@@ -4,69 +4,127 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>80 Days</title>
+  <link rel="stylesheet" href="retro.css">
   <style>
     body {
-      margin: 0;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #222;
-      font-family: sans-serif;
-      overflow: hidden;
+    }
+
+    .window {
+      max-width: 90vw;
     }
 
     #photo {
+      display: block;
       max-width: 80vw;
-      max-height: 80vh;
+      max-height: 65vh;
       cursor: pointer;
-      border-radius: 8px;
+      image-rendering: pixelated;
+      /* reveal the photo top to bottom, like a slow dial-up download */
+      animation: dialup-load 6s steps(30) forwards;
     }
 
-    .popup {
-      position: fixed;
-      padding: 12px 20px;
-      background: white;
-      border: 2px solid #333;
-      border-radius: 6px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-      font-size: 18px;
-      font-weight: bold;
+    @keyframes dialup-load {
+      from { clip-path: inset(0 0 100% 0); }
+      to   { clip-path: inset(0 0 0 0); }
+    }
+
+    .status-bar {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+      font-size: 12px;
+    }
+
+    .status-bar span {
+      flex: 1;
+      padding: 2px 6px;
+      border: 1px solid;
+      border-color: #808080 #fff #fff #808080;
+    }
+
+    #blocked {
+      display: none;
+      margin-top: 6px;
+      color: #a00000;
+      font-size: 12px;
     }
   </style>
 </head>
 <body>
-  <!-- Put your photo next to this file and name it photo.jpg -->
-  <img id="photo" src="photo.jpg" alt="Click me">
+  <div class="window">
+    <div class="title-bar">
+      <span>photo.jpg</span>
+      <span class="title-buttons"><b>_</b><b>□</b><b>×</b></span>
+    </div>
+    <div class="window-body">
+      <!-- Put your photo next to this file and name it photo.jpg -->
+      <img id="photo" src="photo.jpg" alt="Click me">
+      <div class="status-bar">
+        <span id="status">Downloading photo.jpg...</span>
+        <span>Connected at 56.6 Kbps</span>
+      </div>
+      <div id="blocked">
+        Your browser blocked the pop-up windows. Allow pop-ups for this page, then click the photo again.
+      </div>
+    </div>
+  </div>
 
   <script>
     const photo = document.getElementById("photo");
+    const status = document.getElementById("status");
+    const blocked = document.getElementById("blocked");
     const lastDay = 80;
-    let started = false;
+    const popupWidth = 260;
+    const popupHeight = 140;
+    let running = false;
 
-    function showPopup(day) {
-      const popup = document.createElement("div");
-      popup.className = "popup";
-      popup.textContent = "Day " + day;
+    photo.addEventListener("animationend", function () {
+      status.textContent = "Done. Click the photo.";
+    });
 
-      // place each popup at a random spot on the screen
-      popup.style.left = Math.random() * (window.innerWidth - 120) + "px";
-      popup.style.top = Math.random() * (window.innerHeight - 60) + "px";
+    function openPopup(day) {
+      // cascade the windows down and to the right, wrapping when they hit the screen edge
+      const step = 30;
+      const left = ((day - 1) * step) % Math.max(1, screen.availWidth - popupWidth);
+      const top = ((day - 1) * step) % Math.max(1, screen.availHeight - popupHeight);
 
-      document.body.appendChild(popup);
+      return window.open(
+        "popup.html?day=" + day,
+        "day" + day,
+        "width=" + popupWidth + ",height=" + popupHeight + ",left=" + left + ",top=" + top
+      );
     }
 
     photo.addEventListener("click", function () {
-      if (started) return;
-      started = true;
+      if (running) return;
+
+      if (!openPopup(1)) {
+        blocked.style.display = "block";
+        return;
+      }
+      blocked.style.display = "none";
+      running = true;
+      status.textContent = "Opening Day 1 of " + lastDay + "...";
 
       let day = 1;
-      showPopup(day);
-
       const timer = setInterval(function () {
         day++;
-        showPopup(day);
-        if (day === lastDay) clearInterval(timer);
+        if (!openPopup(day)) {
+          clearInterval(timer);
+          running = false;
+          blocked.style.display = "block";
+          return;
+        }
+        status.textContent = "Opening Day " + day + " of " + lastDay + "...";
+        if (day === lastDay) {
+          clearInterval(timer);
+          running = false;
+          status.textContent = "Done.";
+        }
       }, 1000);
     });
   </script>
